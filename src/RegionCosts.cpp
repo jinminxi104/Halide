@@ -56,6 +56,28 @@ public:
     map<string, Interval> input_estimates;
 };
 
+class AddOne : public IRMutator {
+    using IRMutator::visit;
+
+    Expr visit(const Variable *var) override {
+        return var + Expr(1);
+    }
+
+public:
+    const Expr ori;
+    std::string var;
+    Expr addedOne;
+    AddOne(const Expr &e, const std::string var) : ori(e), var(var) {}
+
+};
+
+Expr get_addone_expr(const Expr &e, std::string var) {
+    AddOne ee(e, var);
+    Expr result = ee.mutate(e);
+    debug(0) << "        addedone " << e << " -> " << result << "\n";
+    return result;
+}
+
 // Visitor for tracking the arithmetic and memory costs.
 class ExprCost : public IRVisitor {
     using IRVisitor::visit;
@@ -160,6 +182,14 @@ class ExprCost : public IRVisitor {
             arith += 1;
             memory += call->type.bytes();
             detailed_byte_loads[call->name] += (int64_t)call->type.bytes();
+
+            debug(0) << "  callimage: " << call->name << "\n";
+            for(auto i: call->args){
+                debug(0) << "     callimage: " << i << "\n";
+                Expr test = get_addone_expr(i, "x");
+                debug(0) << "  linear: " << can_prove((test - i) == 1) << "\n";
+    
+            }
         } else if (call->is_extern()) {
             // TODO: Suffix based matching is kind of sketchy; but going ahead with
             // it for now. Also not all the PureExtern's are accounted for yet.
@@ -705,26 +735,27 @@ Expr RegionCosts::input_region_size(const map<string, Box> &input_regions) {
 }
 
 void RegionCosts::disp_func_costs() {
-    debug(0) << "===========================" << '\n';
-    debug(0) << "Pipeline per element costs:" << '\n';
-    debug(0) << "===========================" << '\n';
+    debug(0) << "  ===========================" << '\n';
+    debug(0) << "  Pipeline per element costs:" << '\n';
+    debug(0) << "  ===========================" << '\n';
     for (const auto &kv : env) {
         int stage = 0;
+        debug(0) << "  " << kv.first << "\n";
         for (const auto &cost : func_cost[kv.first]) {
             if (kv.second.has_extern_definition()) {
-                debug(0) << "Extern func\n";
+                debug(0) << "    Extern func\n";
             } else {
                 Definition def = get_stage_definition(kv.second, stage);
                 for (const auto &e : def.values()) {
-                    debug(0) << simplify(e) << '\n';
+                    debug(0) << "    " << simplify(e) << '\n';
                 }
             }
-            debug(0) << "(" << kv.first << ", " << stage << ") -> ("
+            debug(0) << "    (" << kv.first << ", " << stage << ") -> ("
                      << cost.arith << ", " << cost.memory << ")" << '\n';
             stage++;
         }
     }
-    debug(0) << "===========================" << '\n';
+    debug(0) << "     ===========================" << '\n';
 }
 
 bool is_func_trivial_to_inline(const Function &func) {
@@ -736,7 +767,9 @@ bool is_func_trivial_to_inline(const Function &func) {
     // and memory cost separately for conservative estimate.
 
     Cost inline_cost(0, 0);
+    debug(0) << "    check trivial for " << func.name() << "\n";
     for (const auto &val : func.values()) {
+        debug(0) << "        value: " << val << "\n";
         Cost cost = compute_expr_cost(val);
         internal_assert(cost.defined());
         inline_cost.arith = max(cost.arith, inline_cost.arith);
@@ -748,7 +781,9 @@ bool is_func_trivial_to_inline(const Function &func) {
     for (const auto &type : func.output_types()) {
         call_cost.memory = max(type.bytes(), call_cost.memory);
     }
-
+    debug(0) << "        inline cost: " << inline_cost.arith << " " << inline_cost.memory
+             << "\n        callit cost: " << call_cost.arith << " " << call_cost.memory << "\n";
+            
     Expr is_trivial = (call_cost.arith + call_cost.memory) >= (inline_cost.arith + inline_cost.memory);
     return can_prove(is_trivial);
 }
@@ -760,6 +795,10 @@ void Cost::simplify() {
     if (memory.defined()) {
         memory = Internal::simplify(memory);
     }
+    if (sram.defined()) {
+        sram = Internal::simplify(sram);
+    }
+
 }
 
 }  // namespace Internal

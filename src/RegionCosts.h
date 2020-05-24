@@ -23,15 +23,16 @@ struct Cost {
     // Estimate of bytes loaded.
     Expr memory;
 
-    Cost(int64_t arith, int64_t memory) : arith(arith), memory(memory) {}
-    Cost(Expr arith, Expr memory) : arith(std::move(arith)), memory(std::move(memory)) {}
+    Expr sram;
+    Cost(int64_t arith, int64_t memory) : arith(arith), memory(memory), sram(0) {}
+    Cost(Expr arith, Expr memory) : arith(std::move(arith)), memory(std::move(memory)), sram(0) {}
     Cost() = default;
 
     inline bool defined() const { return arith.defined() && memory.defined(); }
     void simplify();
 
-    friend std::ostream& operator<<(std::ostream &stream, const Cost &c) {
-        stream << "[arith: " << c.arith << ", memory: " << c.memory << "]";
+    friend std::ostream &operator<<(std::ostream &stream, const Cost &c) {
+        stream << "[arith: " << c.arith << ", memory: " << c.memory << ", sram: " << c.sram << "]";
         return stream;
     }
 };
